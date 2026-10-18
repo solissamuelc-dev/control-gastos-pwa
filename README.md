@@ -16,3 +16,6 @@ Aplicación web progresiva (PWA) 100% privada y offline-first para el control y 
 ## Instalación y Desarrollo 
 npm install
 npm run devs
+
+## Autor
+Samuel Solis

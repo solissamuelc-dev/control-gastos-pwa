@@ -14,6 +14,5 @@ Aplicación web progresiva (PWA) 100% privada y offline-first para el control y 
 - **PWA Engine:** vite-plugin-pwa (Workbox)
 
 ## Instalación y Desarrollo 
-bash
 npm install
-npm run dev
+npm run devs

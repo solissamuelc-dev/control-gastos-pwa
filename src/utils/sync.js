@@ -2,7 +2,8 @@ import { db } from '../db/db';
 import { supabase } from '../db/supabase';
 
 export async function syncWithCloud(user) {
-  if (!user) return { success: false, message: 'Usuario no autenticado' };
+  if (!supabase) return { success: false, message: 'Supabase no está configurado.' };
+  if (!user) return { success: false, message: 'Usuario no autenticado.' };
 
   try {
     // 1. PUSH: Subir transacciones locales pendientes

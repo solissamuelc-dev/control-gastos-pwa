@@ -22,6 +22,8 @@ export default function App() {
 
   // Escuchar sesión activa de Supabase
   useEffect(() => {
+    if (!supabase) return;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -43,7 +45,8 @@ export default function App() {
     setIsSyncing(false);
   };
 
-  const handleLogout = async () => {
+const handleLogout = async () => {
+    if (!supabase) return;
     if (confirm('¿Cerrar sesión en este dispositivo?')) {
       await supabase.auth.signOut();
       setUser(null);

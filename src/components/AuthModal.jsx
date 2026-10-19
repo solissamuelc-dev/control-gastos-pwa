@@ -13,8 +13,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!supabase) {
+      setErrorMessage('Error: no se detectaron las credenciales de conexión.');
+      return;
+    }
     setLoading(true);
-    setErrorMessage('');
 
     try {
       if (isLogin) {

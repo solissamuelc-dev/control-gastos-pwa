@@ -1,57 +1,110 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Plus, ChevronLeft, ChevronRight, PieChart } from 'lucide-react';
 import { db } from './db/db';
-import { formatCurrency } from './utils/formatters';
-import { Wallet, CheckCircle2 } from 'lucide-react';
+import { getCurrentMonthKey } from './utils/formatters';
+import SummaryCards from './components/SummaryCards';
+import TransactionList from './components/TransactionList';
+import TransactionModal from './components/TransactionModal';
 
 export default function App() {
-  // Consulta reactiva a IndexedDB
-  const categories = useLiveQuery(() => db.categories.toArray(), []);
+  const [currentMonth, setCurrentMonth] = useState(getCurrentMonthKey());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Categorías guardadas en IndexedDB
+  const categories = useLiveQuery(() => db.categories.toArray(), []) || [];
+
+  // Transacciones del mes seleccionado ordenadas de más reciente a más antigua
+  const transactions = useLiveQuery(
+    () =>
+      db.transactions
+        .where('date')
+        .between(`${currentMonth}-01`, `${currentMonth}-31`, true, true)
+        .reverse()
+        .sortBy('date'),
+    [currentMonth]
+  ) || [];
+
+  const changeMonth = (offset) => {
+    const [year, month] = currentMonth.split('-').map(Number);
+    const date = new Date(year, month - 1 + offset, 1);
+    const newY = date.getFullYear();
+    const newM = String(date.getMonth() + 1).padStart(2, '0');
+    setCurrentMonth(`${newY}-${newM}`);
+  };
+
+  const formatMonthTitle = (monthStr) => {
+    const [year, month] = monthStr.split('-');
+    const date = new Date(year, month - 1, 1);
+    return date.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+  };
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100 p-6 flex flex-col items-center">
-      <div className="max-w-md w-full space-y-6">
-        <header className="flex items-center gap-3">
-          <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
-            <Wallet className="w-7 h-7" />
+    <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
+      {/* Barra superior fija */}
+      <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 py-3">
+        <div className="max-w-xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+              <PieChart className="w-5 h-5" />
+            </div>
+            <span className="font-bold text-sm tracking-wide">Mis Finanzas</span>
           </div>
-          <div>
-            <h1 className="text-xl font-bold">Control de Gastos</h1>
-            <p className="text-xs text-slate-400">Base de datos local IndexedDB conectada</p>
-          </div>
-        </header>
 
-        <section className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-lg">
-          <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            Categorías inicializadas ({categories ? categories.length : 0})
-          </h2>
-
-          <div className="space-y-2">
-            {categories ? (
-              categories.map((cat) => (
-                <div
-                  key={cat.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/50 border border-slate-700/40 text-sm"
-                >
-                  <span className="font-medium text-slate-200">{cat.name}</span>
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full ${
-                      cat.type === 'income'
-                        ? 'bg-emerald-500/10 text-emerald-400'
-                        : 'bg-rose-500/10 text-rose-400'
-                    }`}
-                  >
-                    {cat.type === 'income' ? 'Ingreso' : 'Gasto'}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-500">Cargando categorías...</p>
-            )}
+          {/* Navegador de mes */}
+          <div className="flex items-center gap-1 bg-slate-800/90 border border-slate-700/60 rounded-xl px-2 py-1">
+            <button
+              onClick={() => changeMonth(-1)}
+              className="p-1 hover:text-emerald-400 rounded-md transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-semibold px-2 capitalize">
+              {formatMonthTitle(currentMonth)}
+            </span>
+            <button
+              onClick={() => changeMonth(1)}
+              className="p-1 hover:text-emerald-400 rounded-md transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
+        </div>
+      </header>
+
+      {/* Contenido principal */}
+      <main className="max-w-xl mx-auto p-4 space-y-5">
+        <SummaryCards transactions={transactions} />
+
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Movimientos del Mes
+            </h2>
+            <span className="text-xs text-slate-500 font-medium">
+              {transactions.length} registros
+            </span>
+          </div>
+
+          <TransactionList transactions={transactions} categories={categories} />
         </section>
-      </div>
-    </main>
+      </main>
+
+      {/* Botón flotante de acción rápida (FAB) */}
+      <button
+        onClick={() => setIsModalOpen(true)}
+        className="fixed bottom-6 right-6 md:right-auto md:left-1/2 md:translate-x-[220px] bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold p-4 rounded-full shadow-2xl active:scale-95 transition-all flex items-center justify-center"
+        aria-label="Nuevo gasto o ingreso"
+      >
+        <Plus className="w-6 h-6 stroke-[2.5]" />
+      </button>
+
+      {/* Modal de inserción */}
+      <TransactionModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        categories={categories}
+      />
+    </div>
   );
 }

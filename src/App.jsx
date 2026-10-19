@@ -1,18 +1,54 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, ChevronLeft, ChevronRight, PieChart, Download, Upload } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, PieChart, Download, Upload, Cloud, CloudOff, RefreshCw, LogOut } from 'lucide-react';
 import { db } from './db/db';
+import { supabase } from './db/supabase';
 import { getCurrentMonthKey } from './utils/formatters';
 import { exportDatabaseBackup, importDatabaseBackup } from './utils/backup';
+import { syncWithCloud } from './utils/sync';
 import SummaryCards from './components/SummaryCards';
 import CategoryBreakdown from './components/CategoryBreakdown';
 import TransactionList from './components/TransactionList';
 import TransactionModal from './components/TransactionModal';
+import AuthModal from './components/AuthModal';
 
 export default function App() {
   const [currentMonth, setCurrentMonth] = useState(getCurrentMonthKey());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Escuchar sesión activa de Supabase
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        handleSync(session.user);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSync = async (currentUser = user) => {
+    if (!currentUser || isSyncing) return;
+    setIsSyncing(true);
+    await syncWithCloud(currentUser);
+    setIsSyncing(false);
+  };
+
+  const handleLogout = async () => {
+    if (confirm('¿Cerrar sesión en este dispositivo?')) {
+      await supabase.auth.signOut();
+      setUser(null);
+    }
+  };
 
   const categories = useLiveQuery(() => db.categories.toArray(), []) || [];
 
@@ -68,7 +104,36 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Botones de Respaldo */}
+            {/* Estado de sincronización en la nube */}
+            {user ? (
+              <div className="flex items-center gap-1 bg-slate-800/80 border border-slate-700/50 rounded-xl p-1">
+                <button
+                  onClick={() => handleSync()}
+                  disabled={isSyncing}
+                  title="Sincronizar ahora"
+                  className="p-1.5 text-emerald-400 hover:bg-slate-700/60 rounded-lg transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={handleLogout}
+                  title={`Cerrar sesión (${user.email})`}
+                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-700/60 rounded-lg transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-xs font-semibold text-slate-300 hover:text-emerald-400 transition-colors"
+              >
+                <CloudOff className="w-3.5 h-3.5 text-slate-400" />
+                <span>Nube</span>
+              </button>
+            )}
+
+            {/* Respaldo JSON manual */}
             <button
               onClick={exportDatabaseBackup}
               title="Descargar copia de seguridad"
@@ -141,11 +206,20 @@ export default function App() {
         <Plus className="w-6 h-6 stroke-[2.5]" />
       </button>
 
-      {/* Modal */}
+      {/* Modales */}
       <TransactionModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          if (user) handleSync();
+        }}
         categories={categories}
+      />
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onAuthSuccess={(loggedUser) => handleSync(loggedUser)}
       />
     </div>
   );

@@ -6,7 +6,7 @@ export async function syncWithCloud(user) {
   if (!user) return { success: false, message: 'Usuario no autenticado.' };
 
   try {
-    // 1. PUSH: Subir transacciones locales pendientes
+    // 1. PUSH: Subir transacciones locales que aún no tienen supabaseId
     const localTransactions = await db.transactions.toArray();
     const pendingToPush = localTransactions.filter((tx) => !tx.supabaseId);
 
@@ -31,7 +31,7 @@ export async function syncWithCloud(user) {
       }
     }
 
-    // 2. PULL: Descargar transacciones creadas en otros dispositivos
+    // 2. PULL: Consultar registros actualizados en Supabase
     const { data: cloudTransactions, error: pullError } = await supabase
       .from('transactions')
       .select('*')
@@ -39,25 +39,33 @@ export async function syncWithCloud(user) {
 
     if (pullError) throw pullError;
 
-    if (cloudTransactions && cloudTransactions.length > 0) {
-      const currentLocals = await db.transactions.toArray();
-      const localSupabaseIds = new Set(
-        currentLocals.filter((t) => t.supabaseId).map((t) => t.supabaseId)
-      );
+    const cloudMap = new Map((cloudTransactions || []).map((t) => [t.id, t]));
+    const currentLocals = await db.transactions.toArray();
 
-      for (const cloudTx of cloudTransactions) {
-        if (!localSupabaseIds.has(cloudTx.id)) {
-          await db.transactions.add({
-            amount: Number(cloudTx.amount),
-            type: cloudTx.type,
-            categoryId: cloudTx.category_id,
-            note: cloudTx.note,
-            paymentMethod: cloudTx.payment_method,
-            date: cloudTx.date,
-            createdAt: Number(cloudTx.created_at),
-            supabaseId: cloudTx.id
-          });
-        }
+    // 2.1 ELIMINAR EN LOCAL: Si tenía supabaseId pero ya no existe en Supabase, se borró en el otro equipo
+    for (const localTx of currentLocals) {
+      if (localTx.supabaseId && !cloudMap.has(localTx.supabaseId)) {
+        await db.transactions.delete(localTx.id);
+      }
+    }
+
+    // 2.2 INSERTAR EN LOCAL: Registros nuevos creados en el otro equipo
+    const localSupabaseIds = new Set(
+      currentLocals.filter((t) => t.supabaseId).map((t) => t.supabaseId)
+    );
+
+    for (const cloudTx of cloudTransactions) {
+      if (!localSupabaseIds.has(cloudTx.id)) {
+        await db.transactions.add({
+          amount: Number(cloudTx.amount),
+          type: cloudTx.type,
+          categoryId: cloudTx.category_id,
+          note: cloudTx.note,
+          paymentMethod: cloudTx.payment_method,
+          date: cloudTx.date,
+          createdAt: Number(cloudTx.created_at),
+          supabaseId: cloudTx.id
+        });
       }
     }
 

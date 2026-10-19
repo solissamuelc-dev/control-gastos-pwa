@@ -2,12 +2,28 @@ import React from 'react';
 import { Trash2, ShoppingBag } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { db } from '../db/db';
+import { supabase } from '../db/supabase';
 
 export default function TransactionList({ transactions = [], categories = [] }) {
   const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
   const handleDelete = async (id) => {
     if (confirm('¿Eliminar este movimiento?')) {
+      const tx = await db.transactions.get(id);
+
+      // Si el registro ya estaba en la nube, lo eliminamos de Supabase
+      if (tx?.supabaseId && supabase) {
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', tx.supabaseId);
+
+        if (error) {
+          console.error('Error al eliminar de Supabase:', error);
+        }
+      }
+
+      // Eliminar de IndexedDB local
       await db.transactions.delete(id);
     }
   };
